@@ -1,0 +1,2734 @@
+import { createContext, useEffect, useState } from "react";
+import { toast } from "react-toastify";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+
+export const ShopContext = createContext();
+
+const ShopContextProvider = (props) => {
+  const currency = "$";
+  const delivery_fee = 10;
+  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  console.log("Backend URL:", backendUrl);
+
+  const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(true);
+  const [cartItems, setCartItems] = useState({});
+  const [products, setProducts] = useState([]);
+  const [token, setToken] = useState("");
+  const navigate = useNavigate();
+
+  const addToCart = async (itemId, size) => {
+    if (!size) {
+      toast.error("Select Product Size");
+      return;
+    }
+    let cartData = structuredClone(cartItems);
+
+    if (!cartData[itemId]) {
+      cartData[itemId] = {};
+    }
+    cartData[itemId][size] = (cartData[itemId][size] || 0) + 1;
+
+    setCartItems(cartData);
+    console.log("Updated Cart:", cartData);
+
+    if (token) {
+      try {
+        await axios.post(backendUrl + "/api/cart/add", { itemId, size }, { headers: { token } });
+      } catch (error) {
+        console.log(error);
+        toast.error(error.message);
+      }
+    }
+  };
+  
+  
+
+// const updateQuantity = async(itemId, size, quantity) =>{
+//   let cartData = structuredClone(cartItems)
+//   cartData[itemId][size] = quantity
+//   setCartItems(cartData)
+//   if (token) {
+//     try {
+//       await axios.post(backendUrl + '/api/cart/update', {itemId,size,quantity}, {headers: {token}})
+//     } catch (error) {
+//       console.log(error);
+//       toast.error(error.message);
+//     }
+//   }
+// }
+const updateQuantity = async (itemId, size, quantity) => {
+  let cartData = structuredClone(cartItems);
+
+  // ✅ Ensure `cartData[itemId]` exists
+  if (!cartData[itemId]) {
+    cartData[itemId] = {};  // Create new object if not exists
+  }
+
+  // ✅ Ensure `size` is correctly mapped (not "quantity")
+  cartData[itemId][size] = quantity;  
+
+  // ✅ Update state
+  setCartItems(cartData);
+
+  // ✅ Send update to backend only if user is logged in
+  if (token) {
+    try {
+      await axios.post(backendUrl + "/api/cart/update", { itemId, size, quantity }, { headers: { token } });
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message);
+    }
+  }
+};
+
+
+  const getCartCount = () => {
+    let total = 0;
+    for (const items in cartItems){
+      for(const item in cartItems[items]){
+        try {
+          if(cartItems[items][item] > 0){
+            total += cartItems[items][item]
+          }
+        } catch (error) {
+          console.log(error);
+      toast.error(error.message);
+        }
+      }
+    }
+    
+    return total;
+};
+
+  const getCartAmount = () => {
+    let totalAmount = 0;
+    for (const items in cartItems) {
+      let itemInfo = products.find((product) => product._id === items);
+      if (!itemInfo) continue;
+
+      for (const item in cartItems[items]) {
+        totalAmount += (itemInfo.price || 0) * (cartItems[items][item] || 0);
+      }
+    }
+    return totalAmount;
+  };
+
+  const getProductsData = async () => {
+    try {
+      const response = await axios.get(`${backendUrl}/api/product/list`, {
+        headers: { Accept: "application/json" },
+      });
+
+      console.log("Fetched Products:", response.data);
+
+      if (response.data && response.data.success && Array.isArray(response.data.products)) {
+        setProducts(response.data.products);
+      } else {
+        console.error("Invalid response format:", response.data);
+        setProducts([]);
+      }
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      setProducts([]);
+    }
+  };
+
+  // const getuserCart = async (token) => {
+  //   try {
+  //     const response = await axios.post(backendUrl + "/api/cart/get", {}, { headers: { token } });
+
+  //     if (response.data && response.data.success && typeof response.data.cartData === "object") {
+  //       setCartItems(response.data.cartData);
+  //     } else {
+  //       console.error("Invalid cart data received:", response.data);
+  //       setCartItems({});
+  //     }
+  //   } catch (error) {
+  //     console.error("Error fetching user cart:", error);
+  //     toast.error(error.message);
+  //     setCartItems({});
+  //   }
+  // };
+
+  const getuserCart = async (token) => {
+    try {
+        const response = await axios.post(backendUrl + "/api/cart/get", {}, { headers: { token } });
+
+        if (response.data && response.data.success && typeof response.data.cartData === "object") {
+            let fixedCart = {};
+
+            Object.entries(response.data.cartData).forEach(([key, value]) => {
+                // ✅ Ignore numerical keys (invalid data)
+                if (!isNaN(key)) return;
+
+                // ✅ Ensure correct format
+                fixedCart[key] = value;
+            });
+
+            setCartItems(fixedCart);
+        } else {
+            console.error("Invalid cart data received:", response.data);
+            setCartItems({});
+        }
+    } catch (error) {
+        console.error("Error fetching user cart:", error);
+        toast.error(error.message);
+        setCartItems({});
+    }
+};
+
+
+
+
+  useEffect(() => {
+    console.log("Fetching products...");
+    getProductsData();
+  }, []);
+
+  useEffect(() => {
+    if (!token && localStorage.getItem("token")) {
+      setToken(localStorage.getItem("token"));
+      getuserCart(localStorage.getItem("token"));
+    }
+  }, []);
+
+  const value = {
+    products,
+    currency,
+    delivery_fee,
+    search,
+    setSearch,
+    showSearch,
+    setShowSearch,
+    cartItems,
+    setCartItems,
+    addToCart,
+    getCartCount,
+    updateQuantity,
+    getCartAmount,
+    navigate,
+    backendUrl,
+    setToken,
+    token,
+  };
+
+  return <ShopContext.Provider value={value}>{props.children}</ShopContext.Provider>;
+};
+
+export default ShopContextProvider;
+  Cart.jsx 
+  // import React, { useContext, useEffect, useState } from "react";
+// //import {ShopContext} from "../context/ShopContext";
+
+// import Title from "../components/Title";
+// import { assets } from "../assets/assets";
+// import CartTotal from "../components/CartTotal";
+
+// function Cart() {
+//   const { products, currency, cartItems, updateQuantity, navigate } = useContext(ShopContext);
+//   const [cartData, setCartData] = useState([]);
+
+//   useEffect(() => {
+//     console.log("🛒 cartItems (Raw Data):", cartItems);
+
+//     if (products.length > 0) {
+//       const tempData = [];
+
+//       Object.keys(cartItems).forEach(productId => {
+//         Object.keys(cartItems[productId]).forEach(size => {
+//           if (cartItems[productId][size] > 0) {
+//             tempData.push({
+//               _id: productId,
+//               size: size,  // ✅ Ensure size is stored properly
+//               quantity: cartItems[productId][size] // ✅ Correct quantity
+//             });
+//           }
+//         });
+//       });
+
+//       console.log("✅ Processed Cart Data:", tempData);
+//       setCartData(tempData);
+//     }
+//   }, [cartItems, products]);
+
+//   // ✅ Show loading if products are empty
+//   if (products.length === 0) {
+//     return <p className="text-center text-xl my-10">Loading...</p>;
+//   }
+
+//   return (
+//     <div className="text-2xl mb-3">
+//       <Title text1={"YOUR"} text2={"CART"} />
+//       <div>
+//         {cartData.map((item, index) => {
+//           const productData = products.find(product => product._id === item._id) || {}; 
+
+//           return (
+//             <div key={index} className="py-4 border-t border-b text-gray-700 grid grid-cols-[4fr_0.5fr_0.5fr] sm:grid-cols-[4fr_2fr_0.5fr] items-center gap-4">
+//               <div className="flex items-start gap-6">
+//                 <img src={productData?.image?.[0] || assets.placeholder} alt="Product" className="w-16 sm:w-20" />
+//                 <div>
+//                   <p className="text-xs sm:text-lg font-medium">{productData?.name || "Unknown Product"}</p>
+//                   <div className="flex items-center gap-5 mt-2">
+//                     <p>{currency} {productData?.price || "N/A"}</p>
+//                     <p className="px-2 sm:px-3 sm:py-1 border bg-slate-50"> {item.size}</p> {/* ✅ Size will be shown properly */}
+//                   </div>
+//                 </div>
+//               </div>
+//               <input 
+//                 onChange={(e) => {
+//                   const value = Number(e.target.value);
+//                   if (value > 0) {
+//                     updateQuantity(item._id, item.size, value);
+//                   }
+//                 }}
+//                 className="border max-w-10 sm:max-w-20 px-2 py-1"
+//                 type="number"
+//                 min={1}
+//                 value={item.quantity}
+//               />
+//               <img 
+//                 onClick={() => updateQuantity(item._id, item.size, 0)} 
+//                 className="w-4 mr-4 sm:w-5 cursor-pointer" 
+//                 src={assets.bin_icon} 
+//                 alt="Delete" 
+//               />
+//             </div>
+//           );
+//         })}
+//       </div>
+//       <div className="flex justify-end my-20">
+//         <div className="w-full sm:w-[450px]">
+//           <CartTotal />
+//           <div className="w-full text-end">
+//             <button onClick={() => navigate('/place-order')} className="bg-black text-white text-sm my-8 px-8 py-3">
+//               PROCEED TO CHECKOUT
+//             </button>
+//           </div>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+// export default Cart;
+
+
+
+
+
+
+
+cartController ///
+
+const userModel = require("../models/user.model");
+
+
+// 🛒 Add to Cart
+
+  const addToCart = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { itemId, size } = req.body;
+
+    console.log("📦 Request Body:", req.body);
+
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized! Login required." });
+
+    const userData = await userModel.findById(userId);
+    if (!userData) return res.status(404).json({ success: false, message: "User not found!" });
+
+    let cartData = userData.cartData || {}; // 🔥 Ensure cartData is an object
+    console.log("📌 Existing cartData:", JSON.stringify(cartData, null, 2));
+
+    if (!cartData[itemId]) {
+      // 🔥 New item add karna hai
+      cartData[itemId] = {
+        size, 
+        quantity: 1, 
+        _id: itemId 
+      };
+    } else {
+      // 🔄 Quantity badhao agar item pehle se exist karta hai
+      cartData[itemId].quantity += 1;  
+    }
+
+    console.log("✅ Updated cartData Before Saving:", JSON.stringify(cartData, null, 2));
+
+    await userModel.findByIdAndUpdate(userId, { cartData }, { new: true });
+
+    const updatedUserData = await userModel.findById(userId);
+    console.log("🚀 Final Updated cartData in DB:", JSON.stringify(updatedUserData.cartData, null, 2));
+
+    res.json({ success: true, message: "Added to Cart", cartData: updatedUserData.cartData });
+  } catch (error) {
+    console.error("❌ Error in addToCart:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+// 🔄 Update Cart
+// const updateCart = async (req, res) => {
+//   try {
+//     const userId = req.user?.userId;
+//     const { itemId, size, quantity } = req.body;
+
+//     console.log(" Request Body:", req.body);
+
+//     if (!userId)
+//       return res.status(401).json({ success: false, message: "Unauthorized!" });
+
+//     const userData = await userModel.findById(userId);
+//     if (!userData)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "User not found!" });
+
+//     let cartData = userData.cartData || {}; // 🔥 Ensure cartData is an object
+
+//     console.log(" Existing cartData:", JSON.stringify(cartData, null, 2));
+
+//     if (cartData[itemId]) {
+//       // 🔄 Update existing item
+//       cartData[itemId].quantity = quantity;
+//       cartData[itemId].size = size;
+//     } else {
+//       // ✅ Agar item exist nahi karta toh add karo
+//       cartData[itemId] = { _id: itemId, size, quantity };
+//     }
+
+//     console.log(
+//       "✅ Updated cartData Before Saving:",
+//       JSON.stringify(cartData, null, 2)
+//     );
+
+//     // ✅ Update user cartData
+//     await userModel.findByIdAndUpdate(userId, { cartData }, { new: true });
+
+//     console.log(
+//       " Final Updated cartData in DB:",
+//       JSON.stringify(cartData, null, 2)
+//     );
+
+//     res.json({ success: true, message: "Cart Updated", cartData });
+//   } catch (error) {
+//     console.error(" Error in updateCart:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+const updateCart = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { itemId, size, quantity } = req.body;
+
+    console.log("Request Body:", req.body);
+
+    if (!userId)
+      return res.status(401).json({ success: false, message: "Unauthorized!" });
+
+    const userData = await userModel.findById(userId);
+    if (!userData)
+      return res.status(404).json({ success: false, message: "User not found!" });
+
+    let cartData = userData.cartData || {}; // Ensure cartData is an object
+
+    console.log("Existing cartData:", JSON.stringify(cartData, null, 2));
+
+    // Check if both size and quantity are valid
+    if (!size || !quantity) {
+      return res.status(400).json({ success: false, message: "Size and quantity are required!" });
+    }
+
+    // Convert quantity to a number (to ensure it’s a valid number)
+    const quantityNumber = Number(quantity);
+    if (isNaN(quantityNumber) || quantityNumber <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid quantity!" });
+    }
+
+    if (cartData[itemId]) {
+      // Update existing item
+      cartData[itemId].quantity = quantityNumber;
+      cartData[itemId].size = size;
+    } else {
+      // Add new item if it doesn't exist
+      cartData[itemId] = { _id: itemId, size, quantity: quantityNumber };
+    }
+
+    console.log("Updated cartData Before Saving:", JSON.stringify(cartData, null, 2));
+
+    // Update user cartData
+    await userModel.findByIdAndUpdate(userId, { cartData }, { new: true });
+
+    console.log("Final Updated cartData in DB:", JSON.stringify(cartData, null, 2));
+
+    res.json({ success: true, message: "Cart Updated", cartData });
+  } catch (error) {
+    console.error("Error in updateCart:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 🛒 Get user cart data
+const getUserCart = async (req, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId)
+      return res.status(401).json({ success: false, message: "Unauthorized!" });
+
+    const userData = await userModel.findById(userId);
+    if (!userData)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+
+    console.log(
+      " Retrieved cartData:",
+      JSON.stringify(userData.cartData || {}, null, 2)
+    );
+
+    res.json({ success: true, cartData: userData.cartData || {} });
+  } catch (error) {
+    console.error(" Error in getUserCart:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = { addToCart, updateCart, getUserCart };
+   
+
+
+
+   //UPDATEQUANTITY 
+   const updateQuantity = async (itemId, size, quantity) => {
+    let cartData = structuredClone(cartItems);
+    const requestData = { itemId, size, quantity };
+
+    // 📍 YAHAN LAGAO ✅
+    console.log("📦 Request Data:", requestData);
+    // ✅ Ensure `cartData[itemId]` exists
+    if (!cartData[itemId]) {
+      cartData[itemId] = {}; // Create new object if not exists
+    }
+    console.log("🧐 Actual Size Value Before Update:", size);
+     // ❌ Prevent Wrong Size
+     if (size === "quantity" || !size) {
+      console.log("⚠️ Wrong size detected! Setting default.");
+      size = "M";  // or fetch correct size dynamically
+  }
+    // ✅ Ensure `size` is correctly mapped (not "quantity")
+    cartData[itemId][size] = quantity;
+    console.log("🧐 updateQuantity() - Item ID:", itemId, "Size:", size, "Quantity:", quantity);
+
+     // ✅ Update State & Force UI Refresh
+     setCartItems({ ...cartData });
+    console.log("✅ Cart Data After Update:", cartData);
+    // ✅ Send update to backend only if user is logged in
+    if (token) {
+      try {
+        const apiUrl = backendUrl + "/api/cart/update";
+        console.log("🔍 Sending API Request:", apiUrl);
+        console.log("📦 Request Data:", { itemId, size, quantity });
+        console.log("🔑 Token:", token);
+
+        await axios.post(
+          backendUrl + "/api/cart/update",
+          { itemId, size, quantity },
+          { headers: { token } }
+        );
+      } catch (error) {
+        console.log(error);
+        toast.error(error.message);
+      }
+    }
+  };
+////updateQuantity// const updateQuantity = async (itemId, size, quantity) => {
+  //   console.log("Before Update:", cartItems);
+
+  //   if (!size || typeof size !== "string") {
+  //     toast.error("Invalid size selected!");
+  //     return;
+  //   }
+
+  //   let cartData = structuredClone(cartItems);
+
+  //   if (quantity > 0) {
+  //     cartData[itemId] = cartData[itemId] || {}; // ✅ Ensure Object Structure
+  //     cartData[itemId][size] = quantity; // ✅ Store size as key
+  //   } else {
+  //     if (cartData[itemId] && cartData[itemId][size]) {
+  //       delete cartData[itemId][size];
+
+  //       if (Object.keys(cartData[itemId]).length === 0) {
+  //         delete cartData[itemId];
+  //       }
+  //     }
+  //   }
+
+  //   setCartItems({ ...cartData });
+  //   console.log("After Update:", cartData);
+  // };
+
+
+  Added
+  // const addToCart = async (req, res) => {
+//   try {
+//     const userId = req.user?.userId;
+//     const { itemId, size } = req.body;
+
+//     if (!userId) {
+//       return res.status(401).json({ success: false, message: "Unauthorized! Login required." });
+//     }
+//     if (!itemId || !size) {
+//       return res.status(400).json({ success: false, message: "Invalid itemId or size!" });
+//     }
+
+//     // 🛑 1. यूजर का डेटा लो
+//     const userData = await userModel.findById(userId);
+//     if (!userData) {
+//       return res.status(404).json({ success: false, message: "User not found!" });
+//     }
+
+//     // ✅ 2. MongoDB से `cartData` लो और उसे ऑब्जेक्ट में कन्वर्ट करो
+//     let cartData = userData.cartData || {};
+
+//     // ✅ 3. अगर यह आइटम पहले से मौजूद नहीं है तो इसे इनिशियलाइज़ करो
+//     if (!cartData[itemId]) {
+//       cartData[itemId] = {};
+//     }
+
+//     // ✅ 4. अगर यह साइज पहले से मौजूद नहीं है तो इसे इनिशियलाइज़ करो
+//     if (!cartData[itemId][size]) {
+//       cartData[itemId][size] = { size, quantity: 0 };
+//     }
+
+//     // ✅ 5. सही तरीके से quantity अपडेट करो
+//     cartData[itemId][size].quantity += 1;
+
+//     // ✅ 6. अपडेटेड डेटा MongoDB में सेव करो और `{ new: true }` का इस्तेमाल करो
+//     const updatedUser = await userModel.findByIdAndUpdate(
+//       userId,
+//       { $set: { cartData } },
+//       { new: true }
+//     );
+
+//     // 🔍 7. चेक करें कि क्या अपडेट हुआ डेटा मिल रहा है
+//     console.log("Updated cartData:", updatedUser.cartData);
+
+//     return res.json({ success: true, message: "Added to Cart", cartData: updatedUser.cartData });
+//   } catch (error) {
+//     console.error("Error in addToCart:", error);
+//     return res.status(500).json({ success: false, message: "Internal Server Error" });
+//   }
+// };
+cartController
+// const userModel = require("../models/user.model");
+
+// // 🛒 Add to Cart
+// const addToCart = async (req, res) => {
+//   try {
+//     const userId = req.user?.userId;
+//     const { itemId, size } = req.body;
+
+//     if (!userId)
+//       return res
+//         .status(401)
+//         .json({ success: false, message: "Unauthorized! Login required." });
+
+//     if (!itemId || !size)
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid itemId or size!" });
+
+//     const userData = await userModel.findById(userId);
+//     if (!userData)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "User not found!" });
+
+//     let cartData = userData.cartData || {};
+
+//     if (!cartData[itemId]) {
+//       cartData[itemId] = {};
+//     }
+
+//     if (!cartData[itemId][size]) {
+//       cartData[itemId][size] = 1;
+//     } else {
+//       cartData[itemId][size] += 1;
+//     }
+
+//     await userModel.findByIdAndUpdate(
+//       userId,
+//       { $set: { cartData } },
+//       { new: true }
+//     );
+//     res.json({ success: true, message: "Added to Cart", cartData });
+//   } catch (error) {
+//     console.error("Error in addToCart:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// // 🛍 Update Cart
+// const updateCart = async (req, res) => {
+//   try {
+//     console.log("📦 Received Data from Frontend:", req.body);
+
+//     const userId = req.user?.userId;
+//     const { itemId, size, quantity } = req.body;
+
+//     if (!userId)
+//       return res.status(401).json({ success: false, message: "Unauthorized!" });
+//     if (!itemId || !size || isNaN(quantity) || quantity < 0)
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid input!" });
+
+//     const userData = await userModel.findById(userId);
+//     if (!userData)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "User not found!" });
+
+//     let cartData = userData.cartData || {};
+//     console.log("cartData:", cartData);
+//     //console.log("🛒 User's Full Cart Data:", userData.cartData);
+//     if (!cartData[itemId]) {
+//       console.log("❌ Item not found in user's cart!", itemId);
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Item not in cart!" });
+//     }
+
+//     if (quantity === 0) {
+//       delete cartData[itemId][size];
+//       if (Object.keys(cartData[itemId]).length === 0) {
+//         delete cartData[itemId];
+//       }
+//     } else {
+//       cartData[itemId][size] = quantity;
+//     }
+
+//     await userModel.findByIdAndUpdate(
+//       userId,
+//       { $set: { cartData } },
+//       { new: true }
+//     );
+//     res.json({ success: true, message: "Cart Updated", cartData });
+//   } catch (error) {
+//     console.error("Error in updateCart:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+
+// // 📦 Get User Cart
+// const getUserCart = async (req, res) => {
+//   try {
+//     const userId = req.user?.userId;
+//     if (!userId)
+//       return res.status(401).json({ success: false, message: "Unauthorized!" });
+
+//     const userData = await userModel.findById(userId).lean();
+//     if (!userData)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "User not found!" });
+
+//     res.json({ success: true, cartData: userData.cartData || {} });
+//   } catch (error) {
+//     console.error("Error in getUserCart:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// module.exports = { addToCart, updateCart, getUserCart };
+
+
+
+  // // ✅ Update Quantity
+  // const updateQuantity = async (itemId, size, quantity) => {
+  //   if (!size || typeof size !== "string") {
+  //     toast.error("Invalid size selected!");
+  //     return;
+  //   }
+
+  //   let cartData = structuredClone(cartItems);
+  //   if (quantity > 0) {
+  //     cartData[itemId] = cartData[itemId] || {};
+  //     cartData[itemId][size] = quantity;
+  //   } else {
+  //     delete cartData[itemId][size];
+  //     if (Object.keys(cartData[itemId] || {}).length === 0) delete cartData[itemId];
+  //   }
+
+  //   setCartItems({ ...cartData });
+  //   console.log("Cart Item Updated:", cartData);
+
+  //   if (token) {
+  //     try {
+  //       await axios.post(`${backendUrl}/api/cart/update`, { itemId, size, quantity }, { headers: { token } });
+  //     } catch (error) {
+  //       console.log(error);
+  //       toast.error(error.message);
+  //     }
+  //   }
+  // };
+
+
+
+  // const updateQuantity = async (itemId, size, quantity) => {
+  //   console.log("Updating Quantity:", { itemId, size, quantity });
+
+  //   if (!size || typeof size !== "string") {
+  //     toast.error("Invalid size selected!");
+  //     return;
+  //   }
+
+  //   // ✅ Clone cartItems to avoid direct mutation
+  //   let cartData = structuredClone(cartItems) || {};
+
+  //   if (quantity > 0) {
+  //     // ✅ Ensure item exists in cartData
+  //     if (!cartData[itemId]) {
+  //       cartData[itemId] = {};
+  //     }
+  //     cartData[itemId][size] = quantity; // ✅ Set quantity for specific size
+  //   } else {
+  //     // ✅ Remove size from item, and item from cart if empty
+  //     if (cartData[itemId]) {
+  //       delete cartData[itemId][size];
+  //       if (Object.keys(cartData[itemId]).length === 0) delete cartData[itemId];
+  //     }
+  //   }
+
+  //   // ✅ Update State before making API call
+  //   setCartItems({ ...cartData });
+
+  //   // ✅ Update Backend
+  //   if (token) {
+  //     try {
+  //       const res = await axios.post(
+  //         `${backendUrl}/api/cart/update`,
+  //         { itemId, size, quantity },
+  //         { headers: { Authorization: `Bearer ${token}` } }
+  //       );
+
+  //       console.log("Backend Response:", res.data);
+
+  //       // ✅ Ensure UI updates properly
+  //       setCartItems(res.data.cartData);
+  //     } catch (error) {
+  //       console.error("Error updating cart:", error);
+  //       toast.error(error.message);
+  //     }
+  //   }
+  // };
+  //.....
+
+
+
+  cart.jsx 
+
+  import React, { useContext, useCallback } from "react";
+import { ShopContext } from "../context/ShopContext.jsx";
+import Title from "../components/Title";
+import { assets } from "../assets/assets";
+import CartTotal from "../components/CartTotal";
+
+function Cart() {
+  const { products, currency, cartItems, updateQuantity, navigate } = useContext(ShopContext);
+
+  const handleQuantityChange = useCallback(
+    (productId, size, quantity) => {
+      if (quantity < 1 || isNaN(quantity)) return;
+      updateQuantity(productId, size, quantity);
+    },
+    [updateQuantity]
+  );
+
+  if (!products.length) return <p className="text-center text-xl my-10">Loading...</p>;
+
+  return (
+    <div className="text-2xl mb-3">
+      <Title text1="YOUR" text2="CART" />
+
+      <div>
+        {Object.entries(cartItems).flatMap(([productId, sizes]) =>
+          Object.entries(sizes)
+            .filter(([size, quantity]) => ["S", "M", "L", "XL", "XXL"].includes(size) && quantity > 0)
+            .map(([size, quantity]) => {
+              const productData = products.find((product) => product._id === productId);
+              if (!productData) return null;
+
+              return (
+                <div
+                  key={`${productId}-${size}`}
+                  className="py-4 border-t border-b text-gray-700 grid grid-cols-[4fr_0.5fr_0.5fr] sm:grid-cols-[4fr_2fr_0.5fr] items-center gap-4"
+                >
+                  <div className="flex items-start gap-6">
+                    <img
+                      src={productData.image?.[0] || assets.placeholder}
+                      alt="Product"
+                      className="w-16 sm:w-20"
+                    />
+                    <div>
+                      <p className="text-xs sm:text-lg font-medium">
+                        {productData.name || "Unknown Product"}
+                      </p>
+                      <div className="flex items-center gap-5 mt-2">
+                        <p>
+                          {currency} {productData.price || "N/A"}
+                        </p>
+                        <p className="px-2 sm:px-3 sm:py-1 border bg-slate-50">{size}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* <input
+                    onChange={(e) =>
+                      handleQuantityChange(productId, size, Number(e.target.value))
+                    }
+                    className="border max-w-10 sm:max-w-20 px-2 py-1"
+                    type="number"
+                    min={1}
+                    value={quantity}
+                  /> */}
+
+<input
+  onChange={(e) => {
+    const newValue = Number(e.target.value);
+    if (!isNaN(newValue) && newValue >= 0) {
+      handleQuantityChange(productId, size, newValue);
+    }
+  }}
+  className="border max-w-10 sm:max-w-20 px-2 py-1"
+  type="number"
+  min={0}
+  value={quantity ?? 0}
+/>
+
+
+                  <img
+                    onClick={() => updateQuantity(productId, size, 0)}
+                    className="w-4 mr-4 sm:w-5 cursor-pointer"
+                    src={assets.bin_icon}
+                    alt="Delete"
+                  />
+                </div>
+              );
+            })
+        )}
+      </div>
+
+      <div className="flex justify-end my-20">
+        <div className="w-full sm:w-[450px]">
+          <CartTotal />
+          <div className="w-full text-end">
+            <button
+              onClick={() => navigate("/place-order")}
+              className="bg-black text-white text-sm my-8 px-8 py-3"
+            >
+              PROCEED TO CHECKOUT
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Cart;
+//orderadmin 
+o pura code dekho import { useEffect, useState } from "react";
+import axios from "axios";
+import { backendUrl, currency } from "../App";
+import { toast } from "react-toastify";
+import { assets } from "../../../../frontend/src/assets/assets";
+const Orders = ({ token }) => {
+  const [orders, setOrders] = useState([]);
+  const fetchAllOrders = async () => {
+    if (!token) {
+      return null;
+    }
+    try {
+      const response = await axios.post(
+        backendUrl + "/api/order/list",
+        {},
+        { headers: { token } }
+      );
+      //   console.log("Response_Order:", response);
+      if (response.data.success) {
+        setOrders(response.data.orders);
+      } else {
+        toast.error(response.data.message);
+      }
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+  useEffect(() => {
+    fetchAllOrders();
+  });
+  return (
+    <div>
+      <h3>Order Page</h3>
+      <div>
+        {orders.map((order,index) => (
+          <div key={index}>
+            <img src={assets.parcel_icon} alt="parcel_icon" />
+            <div>
+                <div>
+              {order.items.map((item, index) => {
+                if (index === order.items.length - 1) {
+                  return;
+                  <p key={index}>
+                    {item.name} x {item.quantity} <span>{item.size}</span>
+                  </p>;
+                } else {
+                  <p key={index}>
+                    {item.name} x {item.quantity} <span>{item.size}</span>,
+                  </p>;
+                }
+              })}
+            </div>
+            <p>{order.address.firstName + " " + order.address.lastName}</p>
+            <div>
+              <p>{order.address.street + ","}</p>
+              <p>
+                {order.address.city +
+                  ", " +
+                  order.address.state +
+                  ", " +
+                  order.address.country +
+                  ", " +
+                  order.address.zipcode}
+              </p>
+            </div>
+            <p>{order.address.phone}</p>
+          </div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <p>Items :{order.items.length}</p>
+        <p>Method:{order.paymentMethod}</p>
+        <p>Item :{order.items.length}</p>
+        <p>Payment: {order.payment ? 'Done' : 'Pending'}</p>
+        <p>Date :{new Date(order.date).toDateString()}</p>
+      </div>
+      <p>{currency} {order.amount}</p>
+      <select name="" id="">
+        <option value="Order Placed">Order Placed</option>
+        <option value="Packing">Packing</option>
+        <option value="Shipped">Shipped</option>
+        <option value="Out for delivery">Out for delivery</option>
+        <option value="Delivery">Delivery</option>
+      </select>
+    </div>
+  );
+};
+export default Orders;
+
+
+//////// import { createContext, useEffect, useMemo, useState } from "react";
+// import { toast } from "react-toastify";
+// import { useNavigate } from "react-router-dom";
+// import axios from "axios";
+// export const ShopContext = createContext();
+// const ShopContextProvider = ({ children }) => {
+//   const currency = "$";
+//   const delivery_fee = 10;
+//   const backendUrl = import.meta.env.VITE_BACKEND_URL;
+//   const [search, setSearch] = useState("");
+//   const [showSearch, setShowSearch] = useState(true);
+//   const [cartItems, setCartItems] = useState({});
+//   const [products, setProducts] = useState([]);
+//   const [token, setToken] = useState(localStorage.getItem("token") || "");
+//   const navigate = useNavigate();
+
+//   //  Add to Cart
+//   const addToCart = async (itemId, size) => {
+//     if (!size) {
+//       toast.error("Select Product Size");
+//       return;
+//     }
+
+//     let cartData = structuredClone(cartItems);
+//     cartData[itemId] = cartData[itemId] || {};
+//     cartData[itemId][size] = (cartData[itemId][size] || 0) + 1;
+
+//     setCartItems(cartData);
+
+//     if (token) {
+//       try {
+//         await axios.post(
+//           `${backendUrl}/api/cart/add`,
+//           { itemId, size },
+//           { headers: { token } }
+//         );
+//       } catch (error) {
+//         console.log(error);
+//         toast.error(error.message);
+//       }
+//     }
+//   };
+
+//   const updateQuantity = async (itemId, size, quantity) => {
+//     console.log("Updating Quantity:", { itemId, size, quantity });
+//     console.log("✅ quantity before update:", quantity, typeof quantity);
+
+//     if (!size?.trim()) {
+//       console.error(" Invalid size received:", size);
+//       toast.error("Invalid size selected!");
+//       return;
+//     }
+
+//     // Clone cartItems to avoid direct mutation
+//     let cartData = structuredClone(cartItems) || {};
+
+//     if (quantity > 0) {
+//       if (!cartData[itemId]) {
+//         cartData[itemId] = {};
+//       }
+//       console.log("Before Assigning:", cartData[itemId]);
+//       cartData[itemId][size] = quantity; //  Store size & quantity together
+
+//       console.log(" After Assigning:", cartData[itemId]);
+//     } else {
+//       if (cartData[itemId]) {
+//         delete cartData[itemId][size];
+//         if (Object.keys(cartData[itemId]).length === 0) delete cartData[itemId];
+//       }
+//     }
+
+//     //  Update State before making API call
+//     setCartItems(cartData);
+//     console.log("📦 CartItems Structure:", JSON.stringify(cartData, null, 2));
+
+//     // Update Backend
+//     if (token) {
+//       try {
+//         const res = await axios.post(
+//           `${backendUrl}/api/cart/update`,
+//           { itemId, size, quantity },
+//           { headers: { Authorization: `Bearer ${token}` } },
+//           {
+//             withCredentials: true,
+//           }
+//         );
+
+//         if (res.data.success) {
+//           setCartItems(res.data.cartData);
+//           toast.success("Cart updated successfully!");
+//         } else {
+//           toast.error("Failed to update cart!");
+//         }
+//       } catch (error) {
+//         console.error("Error updating cart:", error);
+//         toast.error(error.response?.data?.message || "Something went wrong!");
+//       }
+//     }
+//   };
+
+//   //// getCartCount
+//   const getCartCount = () => {
+//     if (!cartItems || typeof cartItems !== "object") return 0;
+
+//     let total = 0;
+//     for (const itemId in cartItems) {
+//       if (typeof cartItems[itemId] !== "object") continue;
+
+//       for (const size in cartItems[itemId]) {
+//         total += Number(cartItems[itemId][size]) || 0;
+//       }
+//     }
+//     return total;
+//   };
+
+//   // ✅ Get Total Cart Amount (Memoized)
+//   // const getCartAmount = useMemo(() => {
+//   //   let totalAmount = 0;
+//   //   for (const itemId in cartItems) {
+//   //     let itemInfo = products.find((product) => product._id === itemId);
+//   //     if (!itemInfo) continue;
+//   //     for (const size in cartItems[itemId]) {
+//   //       totalAmount += (itemInfo.price || 0) * (cartItems[itemId][size] || 0);
+//   //     }
+//   //   }
+//   //   return totalAmount;
+//   // }, [cartItems, products]);
+//   const getCartAmount = () => {
+//     let totalAmount = 0;
+//     for (const itemId in cartItems) {
+//       let itemInfo = products.find((product) => product._id === itemId);
+//       if (!itemInfo) continue;
+//       for (const size in cartItems[itemId]) {
+//         totalAmount += (itemInfo.price || 0) * (cartItems[itemId][size] || 0);
+//       }
+//     }
+//     return totalAmount;
+//   };
+  
+
+//   // ✅ Fetch Products
+//   const getProductsData = async () => {
+//     try {
+//       const response = await axios.get(`${backendUrl}/api/product/list`);
+//       if (response.data?.success && Array.isArray(response.data.products)) {
+//         setProducts(response.data.products);
+//       } else {
+//         console.error("Invalid response format:", response.data);
+//         setProducts([]);
+//       }
+//     } catch (error) {
+//       console.error("Error fetching products:", error);
+//       setProducts([]);
+//     }
+//   };
+
+//   // ✅ Fetch User Cart
+//   const getUserCart = async (token) => {
+//     try {
+//       const response = await axios.post(
+//         `${backendUrl}/api/cart/get`,
+//         {},
+//         { headers: { token } }
+//       );
+//       if (
+//         response.data?.success &&
+//         typeof response.data.cartData === "object"
+//       ) {
+//         setCartItems(response.data.cartData);
+//       } else {
+//         console.error("Invalid cart data received:", response.data);
+//         setCartItems({});
+//       }
+//     } catch (error) {
+//       console.error("Error fetching user cart:", error);
+//       toast.error(error.message);
+//       setCartItems({});
+//     }
+//   };
+
+//   // ✅ Fetch Products on Mount
+//   useEffect(() => {
+//     getProductsData();
+//   }, []);
+
+//   // ✅ Sync Token & Fetch Cart Data
+//   useEffect(() => {
+//     if (!token && localStorage.getItem('token')) {
+//       console.log("📦 Token mil gaya, cart fetch kar raha hu...");
+//       setToken(localStorage.getItem('token'))
+//       getUserCart(localStorage.getItem('token'));
+//     }
+//   }, [token]);
+
+//   useEffect(() => {
+//     localStorage.setItem('cart', JSON.stringify(cartItems));
+//   }, [cartItems]);
+  
+//   // ✅ Context Value
+//   const value = {
+   
+//     products,
+//     currency,
+//     delivery_fee,
+//     search,
+//     setSearch,
+//     showSearch,
+//     setShowSearch,
+//     cartItems,
+//     setCartItems,
+//     addToCart,
+//     getCartCount,
+//     updateQuantity,
+//     getCartAmount,
+//     navigate,
+//     backendUrl,
+//     setToken,
+//     token,
+//   };
+
+//   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;
+// };
+
+// export default ShopContextProvider;
+
+
+// Verify Stripe...
+// const verifyStripe = async (req, res) => {
+//   const { orderId, success, userId } = req.body;
+//   console.log("Req.Body.Stripe:", req.body);
+//   try {
+//     if (success === "true") {
+//       await orderModel.findByIdAndUpdate(orderId, { payment: true });
+//       await userModel.findByIdAndUpdate(userId, { cartData: {} });
+//       res.json({ success: true });
+//     } else {
+//       await orderModel.findByIdAndDelete(orderId);
+//       res.json({ success: false });
+//     }
+//   } catch (error) {
+//     console.log("VerifyStripe Error:", Error);
+//     res.json({ success: false, message: error.message });
+//   }
+// };
+// // import React, { useContext } from "react";
+// import { assets } from "../assets/assets";
+// import { Link, NavLink } from "react-router-dom";
+// import { ShopContext } from "../context/ShopContext";
+
+// function Navbar() {
+//   const {
+//     setShowSearch,
+//     getCartCount,
+//     navigate,
+//     token,
+//     setToken,
+//     setCartItems,
+//   } = useContext(ShopContext);
+
+//   const logout = () => {
+//     navigate("/login");
+//     localStorage.removeItem("token");
+//     setToken("");
+//     setCartItems({});
+//   };
+
+//   return (
+//     <div className="flex items-center justify-between py-5 font-medium">
+//       {/* Logo */}
+//       <img
+//         onClick={() => (token ? null : navigate("/login"))}
+//         src={assets.logo}
+//         className="w-36 cursor-pointer"
+//         alt=""
+//       />
+
+//       {/* Navbar Links */}
+//       <ul className="hidden sm:flex gap-5 text-sm text-gray-700">
+//         <NavLink to="/" className="flex flex-col items-center gap-1">
+//           <p>HOME</p>
+//         </NavLink>
+//         <NavLink to="/collection" className="flex flex-col items-center gap-1">
+//           <p>COLLECTION</p>
+//         </NavLink>
+//         <NavLink to="/about" className="flex flex-col items-center gap-1">
+//           <p>ABOUT</p>
+//         </NavLink>
+//         <NavLink to="/contact" className="flex flex-col items-center gap-1">
+//           <p>CONTACT</p>
+//         </NavLink>
+//       </ul>
+
+//       {/* Right Side Icons */}
+//       <div className="flex items-center gap-6">
+//         {/* Search Icon */}
+//         <img
+//           onClick={() => setShowSearch(true)}
+//           src={assets.search_icon}
+//           className="w-5 cursor-pointer"
+//           alt=""
+//         />
+
+//         {/* Profile Dropdown Without State */}
+//         <div className="relative group">
+//           <Link to={token ? "#" : "/login"}>
+//             <img
+//               src={assets.profile_icon}
+//               className="w-5 cursor-pointer"
+//               alt=""
+//             />
+//           </Link>
+//           {token && (
+//             <div className="absolute right-0 w-36 py-3 px-5 bg-slate-100 shadow-md hidden group-hover:block">
+//               <p className="cursor-pointer hover:text-black">My Profile</p>
+//               <p
+//                 onClick={() => navigate("/orders")}
+//                 className="cursor-pointer hover:text-black"
+//               >
+//                 Orders
+//               </p>
+//               <p onClick={logout} className="cursor-pointer hover:text-black">
+//                 Logout
+//               </p>
+//             </div>
+//           )}
+//         </div>
+
+//         {/* Cart Icon */}
+//         <Link to="/cart" className="relative">
+//           <img src={assets.cart_icon} className="w-5 min-w-5" alt="" />
+//           {Number(getCartCount() > 0) && (
+//             <p
+//               className="absolute right-[-3px] bottom-[-3px] flex items-center justify-center bg-red-500 text-white 
+//       h-3 w-3 text-[6px] rounded-full"
+//             >
+//               {getCartCount()}
+//             </p>
+//           )}
+//         </Link>
+//       </div>
+//     </div>
+//   );
+// }
+
+// export default Navbar;
+
+//Login 
+// import React, { useContext, useEffect, useState } from "react";
+// import { ShopContext } from "../context/ShopContext";
+// import axios from "axios";
+// import { toast } from "react-toastify";
+
+// function Login() {
+//   const [currentState, setCurrentState] = useState("Login");
+//   const { token, setToken, navigate, backendUrl } = useContext(ShopContext);
+//   const [name, setName] = useState("");
+//   const [password, setPassword] = useState("");
+//   const [email, setEmail] = useState("");
+//   const onSubmitHandler = async (event) => {
+//     event.preventDefault();
+//     try {
+//       if (currentState === "Sign Up") {
+//         const response = await axios.post(backendUrl + "/api/user/register", {
+//           name,
+//           email,
+//           password,
+//         });
+//         console.log("Response", response.data);
+//         if (response.data.success) {
+//           setToken(response.data.token);
+//           localStorage.setItem("token", response.data.token);
+//         } else {
+//           toast.error(response.data.message);
+//         }
+//       } else {
+//         const response = await axios.post(backendUrl + "/api/user/login", {
+//           email,
+//           password,
+//         });
+//         console.log("response.config.data", response.config.data);
+//         if (response.data.success) {
+//           setToken(response.data.token);
+//           localStorage.setItem("token", response.data.token);
+          
+//         } else {
+//           toast.error(response.data.message);
+//         }
+//       }
+//     } catch (error) {
+//       console.log(error);
+//       toast.error(error.message);
+//     }
+//   };
+//   useEffect(() => {
+//     if (token) {
+//       navigate("/");
+//     }
+//   }, [token]);
+//   return (
+//     <form
+//       onSubmit={onSubmitHandler}
+//       className="flex flex-col items-center w-[90%] sm:max-w-96 m-auto mt-14 gap-4 text-gray-800"
+//     >
+//       <div className="inline-flex items-center gap-2 mb-2 mt-10">
+//         <p className="prata-regular text-3xl">{currentState}</p>
+//         <hr className="border-none h-[1.5px] w-8 bg-gray-800" />
+//       </div>
+//       {currentState === "Login" ? (
+//         ""
+//       ) : (
+//         <input
+//           onChange={(e) => setName(e.target.value)}
+//           value={name}
+//           type="text"
+//           className="w-full px-3 py-2 border border-gray-800"
+//           placeholder="Name"
+//         />
+//       )}
+//       <input
+//         onChange={(e) => setEmail(e.target.value)}
+//         value={email}
+//         type="email"
+//         className="w-full px-3 py-2 border border-gray-800"
+//         placeholder="Email"
+//       />
+//       <input
+//         onChange={(e) => setPassword(e.target.value)}
+//         value={password}
+//         type="password"
+//         className="w-full px-3 py-2 border border-gray-800"
+//         placeholder="Password"
+//       />
+//       <div className="w-full flex justify-between text-sm mt-[-8px]">
+//         <p className="cursor-pointer">Forgot your password?</p>
+//         {currentState === "Login" ? (
+//           <p
+//             onClick={() => setCurrentState("Sign Up")}
+//             className="cursor-pointer"
+//           >
+//             Create account
+//           </p>
+//         ) : (
+//           <p
+//             onClick={() => setCurrentState("Login")}
+//             className="cursor-pointer"
+//           >
+//             Login Here
+//           </p>
+//         )}
+//       </div>
+//       <button className="bg-black text-white font-light px-8 py-2 mt-4">
+//         {currentState === "Login" ? "Sign In" : "Sign Up"}
+//       </button>
+//     </form>
+//   );
+// }
+
+// export default Login;
+
+//PRODUCT.JSX....
+
+// import React, { useContext, useEffect, useState } from "react";
+// import { useParams } from "react-router-dom";
+// import { ShopContext } from "../context/ShopContext";
+// import { assets } from "../assets/assets";
+// import RelatedProduct from "../components/RelatedProduct";
+
+// function Product() {
+//   const { productId } = useParams();
+//   const { products, currency, addToCart } = useContext(ShopContext);
+//   const [productData, setProductData] = useState(false);
+//   const [image, setImage] = useState(" ");
+//   const [size, setSize] = useState(" ");
+
+//   const fetchProductData = async () => {
+//     products.map((item) => {
+//       if (item._id === productId) {
+//         setProductData(item);
+
+//         setImage(item.image[0]);
+//         return null;
+//       }
+//     });
+//   };
+//   useEffect(() => {
+//     fetchProductData();
+//   }, [productId]);
+
+//   return productData ? (
+//     <div className="border-t-2 pt-10 transition-opacity ease-in duration-500 opacity-100">
+//       {/*Product Data*/}
+//       <div className="flex gap-12 sm:gap-12 flex-col sm:flex.row">
+//         {/*Product Images*/}
+//         <div className="flex-1 flex flex-row-reverse gap-3 sm:flex-row">
+//           <div className="flex sm:flex-col overflow-x-auto sm:overflow-y-scroll justify-between sm:justify-normal sm:w-[18.7%] w-full">
+//             {productData.image.map((item, index) => (
+//               <img
+//                 onClick={() => setImage(item)}
+//                 src={item}
+//                 key={index}
+//                 alt=""
+//                 className="w-[24%] sm:w-full sm: mb-3 flex-shrink-0 cursor-pointer"
+//               />
+//             ))}
+//           </div>
+
+//           <div className="w-full sm:w-[80%]">
+//             <img src={image} alt="" className="w-full h-auto" />
+//           </div>
+//         </div>
+
+//         {/*-------Product info--------*/}
+//         <div className="flex-1">
+//           <h1 className="font-medium text-2xl mt-2">{productData.name}</h1>
+//           <div className="flex items-center gap-1 mt-2 ">
+//             <img src={assets.star_icon} alt="" className="w-3 5" />
+//             <img src={assets.star_icon} alt="" className="w-3 5" />
+//             <img src={assets.star_icon} alt="" className="w-3 5" />
+//             <img src={assets.star_icon} alt="" className="w-3 5" />
+//             <img src={assets.star_dull_icon} alt="" className="w-3 5" />
+//             <p className="pl-2">(122)</p>
+//           </div>
+//           <p className="mt-5 text-3xl font-medium">
+//             {currency} {productData.price}
+//           </p>
+//           <p className="mt-5 text-gray-500 md:w-4/5">
+//             {productData.description}
+//           </p>
+//           <div className="flex flex-col gap-4 my-8">
+//             <p>Select Size</p>
+//             <div className="flex gap-2">
+//               {productData.sizes.map((item, index) => (
+//                 <button
+//                   onClick={() => setSize(item)}
+//                   key={index}
+//                   className={`border py-2 px-4 bg-gray-100 ${
+//                     item === size ? "border-orange-500" : ""
+//                   }`}
+//                 >
+//                   {item}
+//                 </button>
+//               ))}
+//             </div>
+//           </div>
+//           <button onClick={() => addToCart(productData._id, size)} className="bg-black text-white px-8 py-3 text-sm active:bg-gray-700">
+//             ADD TO CART
+//           </button>
+//           <hr className="mt-8 sm:w-4/5" />
+//           <div className="text-sm text-gray-500 mt-5 flex flex-col  gap-1">
+//             <p>100% Original product.</p>
+//             <p>Cash on delivery is available on this product.</p>
+//             <p>Easy return and exchange policy within 7 days.</p>
+//           </div>
+//         </div>
+//       </div>
+//       {/*-------Description & Review Section ----------*/}
+//       <div className="mt-20">
+//         <div className="flex">
+//           <b className="border px-5 py-3 text-sm">Description</b>
+//           <p className="border px-5 py-3 text-sm">Reviews (122)</p>
+//         </div>
+//         <div className="flex flex-col gap-4 border px-6 py-6 text-sm text-gray-500">
+//           <p>An e-commerce website is an online platform that faciliates the buy.</p>
+//           <p>E-commerce websites typically display products or services along with detailed.</p>
+
+//         </div>
+//       </div>
+//       {/*-----display related products------*/}
+//       <RelatedProduct category={productData.category} subCategory={productData.subCategory}/>
+//     </div>
+//   ) : (
+//     <div className="opacity-0"></div>
+//   );
+// }
+
+// export default Product;
+
+//ORDER.JSX.....
+// import { useEffect, useState } from "react";
+// import axios from "axios";
+// import { backendUrl, currency } from "../App";
+// import { toast } from "react-toastify";
+// import { assets } from "../../../../frontend/src/assets/assets";
+
+// const Orders = ({ token }) => {
+//   const [orders, setOrders] = useState([]);
+
+//   const fetchAllOrders = async () => {
+//     if (!token) return null;
+//     try {
+//       const response = await axios.post(
+//         backendUrl + "/api/order/list",
+//         {},
+//         { headers: { token } }
+//       );
+//       if (response.data.success) {
+//         setOrders(response.data.orders.reverse());
+//       } else {
+//         toast.error(response.data.message);
+//       }
+//     } catch (error) {
+//       toast.error(error.message);
+//     }
+//   };
+//   const statusHandler = async (event, orderId) => {
+//     try {
+//       const response = await axios.post(
+//         backendUrl + "/api/order/status",
+//         { orderId, status: event.target.value },
+//         { headers: { token } }
+//       );
+//       if (response.data.success) {
+//         await fetchAllOrders();
+//       }
+//     } catch (error) {
+//       console.log("error:", error);
+//       toast.error(response.data.message);
+//     }
+//   };
+//   useEffect(() => {
+//     fetchAllOrders();
+//   }, [token]);
+
+//   return (
+//     <div>
+//       <h3 className="text-xl font-semibold mb-4">Order Page</h3>
+
+//       <div>
+//         {orders.map((order, index) => (
+//           <div
+//             key={index}
+//             className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-start border-2 border-gray-200 p-6 md:p-8 my-15 md:my-6 text-xs sm:text-sm text-gray-700"
+//           >
+//             {/* Icon */}
+//             <img className="w-10" src={assets.parcel_icon} alt="parcel_icon" />
+
+//             {/* Items */}
+//             <div>
+//               <div className="mb-2">
+//                 {order.items.map((item, i) => {
+//                   if (i === order.items.length - 1) {
+//                     return (
+//                       <p className="py-0.5" key={i}>
+//                         {item.name} x {item.quantity} <span>{item.size}</span>
+//                       </p>
+//                     );
+//                   } else {
+//                     return (
+//                       <p className="py-0.5" key={i}>
+//                         {item.name} x {item.quantity} <span>{item.size}</span>,
+//                       </p>
+//                     );
+//                   }
+//                 })}
+//               </div>
+//             </div>
+
+//             {/* Address */}
+//             <div>
+//               <p>
+//                 {order.address.firstName} {order.address.lastName}
+//               </p>
+//               <div>
+//                 <p>{order.address.street},</p>
+//                 <p>
+//                   {order.address.city}, {order.address.state},{" "}
+//                   {order.address.country}, {order.address.zipcode}
+//                 </p>
+//               </div>
+//             </div>
+
+//             {/* Contact */}
+//             <div>
+//               <p>{order.address.phone}</p>
+//             </div>
+
+//             {/* Payment Info */}
+//             <div>
+//               <p className="text-sm sm:text-[15px]">
+//                 Items: {order.items.length}
+//               </p>
+//               <p className="mt-3">Method: {order.paymentMethod}</p>
+//               <p>Payment: {order.payment ? "Done" : "Pending"}</p>
+//               <p>Date: {new Date(order.date).toDateString()}</p>
+//             </div>
+
+//             {/* Amount + Dropdown (In a row) */}
+//             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 w-full">
+//               <p className="font-semibold whitespace-nowrap">
+//                 {currency}
+//                 {order.amount}
+//               </p>
+//               <select
+//                 onChange={(event) => statusHandler(event, order._id)}
+//                 value={order.status}
+//                 className="border p-2 rounded text-sm font-semibold  sm:w-auto max-w-full"
+//               >
+//                 <option value="Order Placed">Order Placed</option>
+//                 <option value="Packing">Packing</option>
+//                 <option value="Shipped">Shipped</option>
+//                 <option value="Out for delivery">Out for delivery</option>
+//                 <option value="Delivery">Delivery</option>
+//               </select>
+//             </div>
+//           </div>
+//         ))}
+//       </div>
+//     </div>
+//   );
+// };
+// export default Orders;
+
+//PLACEORDER....
+// import React, { useContext, useState } from "react";
+// import Title from "../components/Title";
+// import CartTotal from "../components/CartTotal";
+// import { assets } from "../assets/assets";
+// import { ShopContext } from "../context/ShopContext";
+// import axios from "axios";
+// import { toast } from "react-toastify";
+
+// function PlaceOrder() {
+//   const [method, setMethod] = useState("cod");
+//   const {
+//     navigate,
+//     backendUrl,
+//     token,
+//     cartItems,
+//     setCartItems,
+//     getCartAmount,
+//     delivery_fee,
+//     products,
+//   } = useContext(ShopContext);
+
+//   const [formData, setFormData] = useState({
+//     firstName: "",
+//     lastName: "",
+//     email: "",
+//     street: "",
+//     city: "",
+//     state: "",
+//     zipcode: "",
+//     country: "",
+//     phone: "",
+//   });
+
+//   const onChangeHandler = (e) => {
+//     const name = e.target.name;
+//     const value = e.target.value;
+//     setFormData((data) => ({ ...data, [name]: value }));
+//   };
+
+//   const onSubmitHandler = async (e) => {
+//     e.preventDefault();
+//     try {
+//       let orderItems = [];
+
+//       for (const items in cartItems) {
+//         for (const item in cartItems[items]) {
+//           if (cartItems[items][item] > 0) {
+//             const itemInfo = structuredClone(
+//               products.find((product) => product._id === items)
+//             );
+//             if (itemInfo) {
+//               itemInfo.size = item;
+//               itemInfo.quantity = cartItems[items][item];
+//               orderItems.push(itemInfo);
+//             }
+//           }
+//         }
+//       }
+
+//       let orderData = {
+//         address: formData,
+//         items: orderItems,
+//         amount: getCartAmount() + delivery_fee,
+//         paymentMethod: "COD",
+//       };
+//       switch (method) {
+//         case "cod":
+//           const response = await axios.post(
+//             backendUrl + "/api/order/place",
+//             orderData,
+//             { headers: { token } }
+//           );
+
+//           console.log("response.data", response.data);
+
+//           if (response.data.success) {
+//             toast.success("Payment Successful 🎉");
+//             setCartItems({});
+//             localStorage.removeItem("cart");
+//             navigate("/orders");
+//           } else {
+//             toast.error(response.data.message);
+//           }
+//           break;
+
+//         case "stripe":
+//           const responseStripe = await axios.post(
+//             backendUrl + "/api/order/stripe",
+//             orderData,
+//             { headers: { token, origin: window.location.origin } }
+//           );
+//           if (responseStripe.data.success) {
+//             const { session_url } = responseStripe.data;
+//             window.location.replace(session_url);
+//           } else {
+//             toast.error(responseStripe.data.message);
+//           }
+//           console.log("responseStripe:", responseStripe);
+//           break;
+//         default:
+//           break;
+//       }
+//       console.log("Sending orderData:", orderData);
+//     } catch (error) {
+//       console.log("error:", error);
+//       toast.error(error.message);
+//     }
+//   };
+
+//   return (
+//     <form
+//       onSubmit={onSubmitHandler}
+//       className="flex flex-col sm:flex-row justify-between gap-4 pt-5 sm:pt-14 min-h-[80vh] border-t"
+//     >
+//       {/* Left Side */}
+//       <div className="flex flex-col gap-4 w-full sm:max-w-[480px]">
+//         <div className="text-xl sm:text-2xl my-3">
+//           <Title text1={"DELIVERY"} text2={"INFORMATION"} />
+//         </div>
+//         <div className="flex gap-3">
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="firstName"
+//             value={formData.firstName}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="text"
+//             placeholder="First name"
+//           />
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="lastName"
+//             value={formData.lastName}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="text"
+//             placeholder="Last name"
+//           />
+//         </div>
+//         <input
+//           required
+//           onChange={onChangeHandler}
+//           name="email"
+//           value={formData.email}
+//           className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//           type="email"
+//           placeholder="Email"
+//         />
+//         <input
+//           required
+//           onChange={onChangeHandler}
+//           name="street"
+//           value={formData.street}
+//           className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//           type="text"
+//           placeholder="Street"
+//         />
+//         <div className="flex gap-3">
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="city"
+//             value={formData.city}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="text"
+//             placeholder="City"
+//           />
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="state"
+//             value={formData.state}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="text"
+//             placeholder="State"
+//           />
+//         </div>
+//         <div className="flex gap-3">
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="zipcode"
+//             value={formData.zipcode}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="number"
+//             placeholder="Zipcode"
+//           />
+//           <input
+//             required
+//             onChange={onChangeHandler}
+//             name="country"
+//             value={formData.country}
+//             className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//             type="text"
+//             placeholder="Country"
+//           />
+//         </div>
+//         <input
+//           required
+//           onChange={onChangeHandler}
+//           name="phone"
+//           value={formData.phone}
+//           className="border border-gray-300 rounded py-1.5 px-3.5 w-full "
+//           type="number"
+//           placeholder="Phone"
+//         />
+//       </div>
+
+//       {/* Right Side */}
+//       <div className="mt-8">
+//         <div className="mt-8 min-w-80">
+//           <CartTotal />
+//         </div>
+//         <div className="mt-12">
+//           <Title text1={"PAYMENT"} text2={"METHOD"} />
+
+//           <div className="flex gap-3 flex-col lg:flex-row">
+//             <div
+//               onClick={() => setMethod("stripe")}
+//               className="flex items-center gap-3 border p-2 px-3 cursor-pointer"
+//             >
+//               <p
+//                 className={`min-w-3.5 h-3.5 border rounded-full ${
+//                   method === "stripe" ? "bg-green-400" : ""
+//                 }`}
+//               ></p>
+//               <img src={assets.stripe_logo} alt="" className="h-5 mx-4" />
+//             </div>
+
+//             <div
+//               onClick={() => setMethod("razorpay")}
+//               className="flex items-center gap-3 border p-2 px-3 cursor-pointer"
+//             >
+//               <p
+//                 className={`min-w-3.5 h-3.5 border rounded-full ${
+//                   method === "razorpay" ? "bg-green-400" : ""
+//                 }`}
+//               ></p>
+//               <img src={assets.razorpay_logo} alt="" className="h-5 mx-4" />
+//             </div>
+
+//             <div
+//               onClick={() => setMethod("cod")}
+//               className="flex items-center gap-3 border p-2 px-3 cursor-pointer"
+//             >
+//               <p
+//                 className={`min-w-3.5 h-3.5 border rounded-full ${
+//                   method === "cod" ? "bg-green-400" : ""
+//                 }`}
+//               ></p>
+//               <p className="text-gray-500 text-sm font-medium mx-4">
+//                 CASH ON DELIVERY
+//               </p>
+//             </div>
+//           </div>
+
+//           <div className="w-full text-end mt-8">
+//             <button
+//               type="submit"
+//               className="bg-black text-white px-16 py-3 text-sm"
+//             >
+//               PLACE_ORDER
+//             </button>
+//           </div>
+//         </div>
+//       </div>
+//     </form>
+//   );
+// }
+
+// export default PlaceOrder;
+
+//ADD
+// import { useState } from "react";
+// import upload_area from "../assets/upload_area.png";
+// import axios from "axios";
+// import { backendUrl } from "../App";
+// import { toast } from "react-toastify";
+// import "react-toastify/dist/ReactToastify.css";
+// const Add = ({ token }) => {
+//   const [image1, setImage1] = useState(false);
+//   const [image2, setImage2] = useState(false);
+//   const [image3, setImage3] = useState(false);
+//   const [image4, setImage4] = useState(false);
+
+//   const [name, setName] = useState("");
+//   const [description, setDescription] = useState("");
+//   const [price, setPrice] = useState("");
+//   const [category, setCategory] = useState("Men");
+//   const [subCategory, setSubCategory] = useState("Topwear");
+//   const [bestseller, setBestseller] = useState(false);
+//   const [sizes, setSizes] = useState([]);
+//   const onSubmitHandler = async (e) => {
+//     e.preventDefault();
+//     try {
+//       const formData = new FormData();
+//       formData.append("name", name);
+//       formData.append("description", description);
+//       formData.append("price", price);
+//       formData.append("category", category);
+//       formData.append("subCategory", subCategory);
+//       formData.append("bestseller", bestseller);
+//       formData.append("sizes", JSON.stringify(sizes));
+
+//       image1 && formData.append("image1", image1);
+//       image2 && formData.append("image2", image2);
+//       image3 && formData.append("image3", image3);
+//       image4 && formData.append("image4", image4);
+
+//       const response = await axios.post(
+//         backendUrl + "/api/product/add",
+//         formData,
+//         { headers: { token } }
+//       );
+//       console.log("Response Data:", response.data);
+
+//       if (response.data.success) {
+//         console.log("✅ Success Toast Chalu Ho Raha Hai!");
+
+//         toast.success("Product added", response.data.success);
+//         setName("");
+//         setDescription("");
+//         setImage1(false);
+//         setImage2(false);
+//         setImage3(false);
+//         setImage4(false);
+//         setPrice("");
+//       } else {
+//         toast.error(response.data.message);
+//       }
+//     } catch (error) {
+//       console.log(error);
+//       toast.error(error.message);
+//     }
+//   };
+
+//   return (
+//     <form
+//       onSubmit={onSubmitHandler}
+//       className="flex flex-col w-full items-start gap-3"
+//     >
+//       <div className="">
+//         <p className="mb-2">Upload Image</p>
+//         <div className="flex gap-2">
+//           <label htmlFor="image1">
+//             <img
+//               className="w-20"
+//               src={!image1 ? upload_area : URL.createObjectURL(image1)}
+//               alt=""
+//             />
+//             <input
+//               onChange={(e) => setImage1(e.target.files[0])}
+//               type="file"
+//               id="image1"
+//               hidden
+//             />
+//           </label>
+//           <label htmlFor="image2">
+//             <img
+//               className="w-20"
+//               src={!image2 ? upload_area : URL.createObjectURL(image2)}
+//               alt=""
+//             />
+//             <input
+//               onChange={(e) => setImage2(e.target.files[0])}
+//               type="file"
+//               id="image2"
+//               hidden
+//             />
+//           </label>
+//           <label htmlFor="image3">
+//             <img
+//               className="w-20"
+//               src={!image3 ? upload_area : URL.createObjectURL(image3)}
+//               alt=""
+//             />
+//             <input
+//               onChange={(e) => setImage3(e.target.files[0])}
+//               type="file"
+//               id="image3"
+//               hidden
+//             />
+//           </label>
+//           <label htmlFor="image4">
+//             <img
+//               className="w-20"
+//               src={!image4 ? upload_area : URL.createObjectURL(image4)}
+//               alt=""
+//             />
+//             <input
+//               onChange={(e) => setImage4(e.target.files[0])}
+//               type="file"
+//               id="image4"
+//               hidden
+//             />
+//           </label>
+//         </div>
+//       </div>
+//       <div className="w-full">
+//         <p className="mb-2">Product name</p>
+//         <input
+//           onChange={(e) => setName(e.target.value)}
+//           value={name}
+//           className="w-full max-w-[500px] px-3 py-2"
+//           type="text"
+//           placeholder="Type here "
+//         />
+//       </div>
+
+//       <div className="w-full">
+//         <p className="mb-2">Product description</p>
+//         <textarea
+//           onChange={(e) => setDescription(e.target.value)}
+//           value={description}
+//           className="w-full max-w-[500px] px-3 py-2"
+//           type="text"
+//           placeholder="Type here "
+//         />
+//       </div>
+//       <div className="flex flex-col sm:flex-row gap-2 w-full sm:gap-8">
+//         <div>
+//           <p className="mb-2">Product category</p>
+//           <select
+//             onChange={(e) => setCategory(e.target.value)}
+//             name=""
+//             id=""
+//             className="w-full px-3 py-2"
+//           >
+//             <option value="Men">Men</option>
+//             <option value="Women">Women</option>
+//             <option value="kids">Kids</option>
+//           </select>
+//         </div>
+//         <div>
+//           <p className="mb-2">Sub Category</p>
+//           <select
+//             onChange={(e) => setSubCategory(e.target.value)}
+//             name=""
+//             id=""
+//             className="w-full px-3 py-2"
+//           >
+//             <option value="Topwear">Topwear</option>
+//             <option value="Bottomwear">Bottomwear</option>
+//             <option value="Winterwear">Winterwear</option>
+//           </select>
+//         </div>
+//         <div>
+//           <p className="mb-2">Product Price</p>
+//           <input
+//             onChange={(e) => setPrice(e.target.value)}
+//             value={price}
+//             className="w-full px-3 py-2 sm:w-[120px]"
+//             type="Number"
+//             placeholder=""
+//           />
+//         </div>
+//       </div>
+//       <div>
+//         <p className="mb-2">Product Sizes</p>
+//         <div className="flex gap-3">
+//           <div
+//             onClick={(e) =>
+//               setSizes((prev) =>
+//                 prev.includes("S")
+//                   ? prev.filter((item) => item !== "S")
+//                   : [...prev, "S"]
+//               )
+//             }
+//           >
+//             <p
+//               className={`${
+//                 sizes.includes("S") ? "bg-pink-100" : "bg-slate-200"
+//               } px-3 py-1 cursor-pointer`}
+//             >
+//               S
+//             </p>
+//           </div>
+
+//           <div
+//             onClick={(e) =>
+//               setSizes((prev) =>
+//                 prev.includes("M")
+//                   ? prev.filter((item) => item !== "M")
+//                   : [...prev, "M"]
+//               )
+//             }
+//           >
+//             <p
+//               className={`${
+//                 sizes.includes("M") ? "bg-pink-100" : "bg-slate-200"
+//               } px-3 py-1 cursor-pointer`}
+//             >
+//               M
+//             </p>
+//           </div>
+
+//           <div
+//             onClick={(e) =>
+//               setSizes((prev) =>
+//                 prev.includes("L")
+//                   ? prev.filter((item) => item !== "L")
+//                   : [...prev, "L"]
+//               )
+//             }
+//           >
+//             <p
+//               className={`${
+//                 sizes.includes("L") ? "bg-pink-100" : "bg-slate-200"
+//               } px-3 py-1 cursor-pointer`}
+//             >
+//               L
+//             </p>
+//           </div>
+
+//           <div
+//             onClick={(e) =>
+//               setSizes((prev) =>
+//                 prev.includes("XL")
+//                   ? prev.filter((item) => item !== "XL")
+//                   : [...prev, "XL"]
+//               )
+//             }
+//           >
+//             <p
+//               className={`${
+//                 sizes.includes("XL") ? "bg-pink-100" : "bg-slate-200"
+//               } px-3 py-1 cursor-pointer`}
+//             >
+//               XL
+//             </p>
+//           </div>
+//           <div
+//             onClick={(e) =>
+//               setSizes((prev) =>
+//                 prev.includes("XXL")
+//                   ? prev.filter((item) => item !== "XXL")
+//                   : [...prev, "XXL"]
+//               )
+//             }
+//           >
+//             <p
+//               className={`${
+//                 sizes.includes("XXL") ? "bg-pink-100" : "bg-slate-200"
+//               } px-3 py-1 cursor-pointer`}
+//             >
+//               XXL
+//             </p>
+//           </div>
+//         </div>
+//       </div>
+//       <div className="flex gap-2 mt-2">
+//         <input
+//           onChange={() => setBestseller((prev) => !prev)}
+//           checked={bestseller}
+//           type="checkbox"
+//           id="bestseller"
+//         />
+//         <label className="cursor-pointer" htmlFor="bestseller">
+//           Add to bestseller
+//         </label>
+//       </div>
+//       <button type="submit" className="w-28 py-3 mt-4 bg-black text-white">
+//         ADD
+//       </button>
+//     </form>
+//   );
+// };
+// export default Add;
+
+///NAVBAR.....
+// // import React, { useContext, useState, useRef, useEffect } from "react";
+// // import { assets } from "../assets/assets";
+
+// // import { Link, NavLink, useNavigate } from "react-router-dom";
+// // import { ShopContext } from "../context/ShopContext";
+
+// // function Navbar() {
+// //   const {
+// //     setShowSearch,
+// //     getCartCount,
+// //     token,
+// //     setToken,
+// //     setCartItems,
+// //   } = useContext(ShopContext);
+
+// //   const navigate = useNavigate(); // ✅ useNavigate hook
+// //   const [showDropdown, setShowDropdown] = useState(false);
+// //   const dropdownRef = useRef(null);
+
+// //   // ✅ Logout function
+// //   const logout = () => {
+// //     localStorage.removeItem("token");
+// //     setToken("");
+// //     setCartItems({});
+// //     setShowDropdown(false);
+// //     navigate("/login");
+// //   };
+
+// //   // ✅ Close dropdown when clicking outside
+// //   useEffect(() => {
+// //     const handleClickOutside = (event) => {
+// //       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+// //         setShowDropdown(false);
+// //       }
+// //     };
+// //     document.addEventListener("mousedown", handleClickOutside);
+// //     return () => document.removeEventListener("mousedown", handleClickOutside);
+// //   }, []);
+
+// //   return (
+// //     <div className="flex items-center justify-between py-5 px-4 sm:px-10 font-medium shadow-sm bg-white sticky top-0 z-30">
+// //       {/* Logo */}
+// //       <img
+// //         onClick={() => (token ? null : navigate("/"))}
+// //         src={assets.logo}
+// //         className="w-36 cursor-pointer"
+// //         alt="logo"
+// //       />
+
+// //       {/* Navbar Links */}
+// //       <ul className="hidden sm:flex gap-6 text-sm text-gray-700">
+// //         <NavLink to="/" className="hover:text-black transition">
+// //           HOME
+// //         </NavLink>
+// //         <NavLink to="/collection" className="hover:text-black transition">
+// //           COLLECTION
+// //         </NavLink>
+// //         <NavLink to="/about" className="hover:text-black transition">
+// //           ABOUT
+// //         </NavLink>
+// //         <NavLink to="/contact" className="hover:text-black transition">
+// //           CONTACT
+// //         </NavLink>
+// //       </ul>
+
+// //       {/* Right Side Icons */}
+// //       <div className="flex items-center gap-5">
+// //         {/* Search Icon */}
+// //         <img
+// //           onClick={() => setShowSearch(true)}
+// //           src={assets.search_icon}
+// //           className="w-5 cursor-pointer"
+// //           alt="search"
+// //         />
+
+// //         {/* Profile Icon with Dropdown */}
+// //         <div className="relative" ref={dropdownRef}>
+// //           <img
+// //             onClick={() => token && setShowDropdown((prev) => !prev)}
+// //             src={assets.profile_icon}
+// //             className="w-5 cursor-pointer"
+// //             alt="profile"
+// //           />
+
+// //           {/* Dropdown menu */}
+// //           {token && showDropdown && (
+// //             <div className="absolute right-0 top-7 w-40 bg-white shadow-lg rounded-md p-3 z-20 transition-all">
+// //               <p
+// //                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+// //                 onClick={() => {
+// //                   navigate("/profile");
+// //                   setShowDropdown(false);
+// //                 }}
+// //               >
+// //                 My Profile
+// //               </p>
+// //               <p
+// //                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+// //                 onClick={() => {
+// //                   navigate("/orders");
+// //                   setShowDropdown(false);
+// //                 }}
+// //               >
+// //                 Orders
+// //               </p>
+// //               <p
+// //                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+// //                 onClick={logout}
+// //               >
+// //                 Logout
+// //               </p>
+// //             </div>
+// //           )}
+// //         </div>
+
+// //         {/* Cart Icon */}
+// //         <Link to="/cart" className="relative">
+// //           <img src={assets.cart_icon} className="w-5 min-w-5" alt="cart" />
+// //           {getCartCount() > 0 && (
+// //             <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+// //               {getCartCount() > 99 ? "99+" : getCartCount()}
+// //             </div>
+// //           )}
+// //         </Link>
+// //       </div>
+// //     </div>
+// //   );
+// // }
+
+// // export default Navbar;
+
+// import React, { useContext, useState, useRef, useEffect } from "react";
+// import { assets } from "../assets/assets";
+// import Shoping from '../assets/Shoping.jpg';
+// import { Link, NavLink, useNavigate } from "react-router-dom";
+// import { ShopContext } from "../context/ShopContext";
+
+// function Navbar() {
+//   const {
+
+//     setShowSearch,
+//     getCartCount,
+//     token,
+//     setToken,
+//     setCartItems,
+//   } = useContext(ShopContext);
+
+//   const navigate = useNavigate();
+//   const [showDropdown, setShowDropdown] = useState(false);
+//   const dropdownRef = useRef(null);
+
+//   const logout = () => {
+//     localStorage.removeItem("token");
+//     setToken("");
+//     setCartItems({});
+//     setShowDropdown(false);
+//     navigate("/login");
+//   };
+
+//   useEffect(() => {
+//     const handleClickOutside = (event) => {
+//       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+//         setShowDropdown(false);
+//       }
+//     };
+//     document.addEventListener("mousedown", handleClickOutside);
+//     return () => document.removeEventListener("mousedown", handleClickOutside);
+//   }, []);
+
+//   return (
+//     <div className="flex items-center justify-between py-5 px-4 sm:px-10 font-medium shadow-sm bg-white sticky top-0 z-30">
+//       {/* ✅ Logo + Name */}
+//       <div
+//         className="flex items-center gap-2 cursor-pointer"
+//         onClick={() => (token ? null : navigate("/"))}
+//       >
+//         <img
+//           src={Shoping}
+//           className="w-14 h-14 object-cover rounded-full"
+//           alt="logo"
+//         />
+//          <span className="font-bold text-2xl text-gray-800 hidden sm:inline">
+//     <span className="text-blue-600">SHOP</span>ZONE
+//   </span>
+//       </div>
+
+//       {/* Navbar Links */}
+//       <ul className="hidden sm:flex gap-6 text-sm text-gray-700">
+//         <NavLink to="/" className="hover:text-black transition">
+//           HOME
+//         </NavLink>
+//         <NavLink to="/collection" className="hover:text-black transition">
+//           COLLECTION
+//         </NavLink>
+//         <NavLink to="/about" className="hover:text-black transition">
+//           ABOUT
+//         </NavLink>
+//         <NavLink to="/contact" className="hover:text-black transition">
+//           CONTACT
+//         </NavLink>
+//       </ul>
+
+//       {/* Right Side Icons */}
+//       <div className="flex items-center gap-5">
+//         {/* Search Icon */}
+//         <img
+//           onClick={() => setShowSearch(true)}
+//           src={assets.search_icon}
+//           className="w-5 cursor-pointer"
+//           alt="search"
+//         />
+
+//         {/* Profile Icon with Dropdown */}
+//         <div className="relative" ref={dropdownRef}>
+//           <img
+//             onClick={() => token && setShowDropdown((prev) => !prev)}
+//             src={assets.profile_icon}
+//             className="w-5 cursor-pointer"
+//             alt="profile"
+//           />
+//           {token && showDropdown && (
+//             <div className="absolute right-0 top-7 w-40 bg-white shadow-lg rounded-md p-3 z-20 transition-all">
+//               <p
+//                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+//                 onClick={() => {
+//                   navigate("/profile");
+//                   setShowDropdown(false);
+//                 }}
+//               >
+//                 My Profile
+//               </p>
+//               <p
+//                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+//                 onClick={() => {
+//                   navigate("/orders");
+//                   setShowDropdown(false);
+//                 }}
+//               >
+//                 Orders
+//               </p>
+//               <p
+//                 className="py-1 px-2 text-sm hover:bg-gray-100 cursor-pointer rounded"
+//                 onClick={logout}
+//               >
+//                 Logout
+//               </p>
+//             </div>
+//           )}
+//         </div>
+
+//         {/* Cart Icon */}
+//         <Link to="/cart" className="relative">
+//           <img src={assets.cart_icon} className="w-5 min-w-5" alt="cart" />
+//           {getCartCount() > 0 && (
+//             <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+//               {getCartCount() > 99 ? "99+" : getCartCount()}
+//             </div>
+//           )}
+//         </Link>
+//       </div>
+//     </div>
+//   );
+// }
+
+// export default Navbar;
+admin Order
+// import { useEffect, useState } from "react";
+// import axios from "axios";
+// import { backendUrl, currency } from "../App";
+// import { toast } from "react-toastify";
+// //import { assets } from "../../../../frontend/src/assets/assets";
+// import tracking from '../assets/tracking.png'
+
+// const Orders = ({ token }) => {
+//   const [orders, setOrders] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   const fetchAllOrders = async () => {
+//     if (!token) return;
+//     setLoading(true);
+//     try {
+//       const { data } = await axios.post(
+//         `${backendUrl}/api/order/list`,
+//         {},
+//         { headers: { token } }
+//       );
+//       if (data.success) {
+//         setOrders(data.orders.reverse());
+//       } else {
+//         toast.error(data.message);
+//       }
+//     } catch (error) {
+//       toast.error(error.message || "Something went wrong");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   const statusHandler = async (event, orderId) => {
+//     try {
+//       const newStatus = event.target.value;
+//       const { data } = await axios.post(
+//         `${backendUrl}/api/order/status`,
+//         { orderId, status: newStatus },
+//         { headers: { token } }
+//       );
+//       if (data.success) {
+//         toast.success("Order status updated");
+//         fetchAllOrders();
+//       } else {
+//         toast.error(data.message);
+//       }
+//     } catch (error) {
+//       toast.error(error.message || "Failed to update status");
+//     }
+//   };
+
+//   useEffect(() => {
+//     fetchAllOrders();
+//   }, [token]);
+
+//   return (
+//     <div className="px-4 md:px-0">
+//       <h3 className="text-2xl font-semibold mb-6">Orders</h3>
+
+//       {loading ? (
+//         <p className="text-center text-gray-500">Loading orders...</p>
+//       ) : orders.length === 0 ? (
+//         <p className="text-center text-gray-500">No orders found.</p>
+//       ) : (
+//         <div className="space-y-6 font-bold">
+//           {orders.map((order, index) => (
+//             <OrderCard
+//               key={index}
+//               order={order}
+//               onStatusChange={(e) => statusHandler(e, order._id)}
+//             />
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   );
+// };
+
+// const OrderCard = ({ order, onStatusChange }) => {
+//   return (
+//     <div className="grid grid-cols-1 sm:grid-cols-6 gap-4 items-start border border-gray-200 p-6 rounded-lg shadow-sm text-sm text-gray-700">
+//       {/* Icon */}
+//       <img
+//         className="w-10 h-10 object-contain"
+//         src={tracking}
+//         alt="parcel"
+//       />
+
+//       {/* Items */}
+//       <div>
+//         {order.items.map((item, i) => (
+//           <p key={i}>
+//             {item.name} x {item.quantity} <span>({item.size})</span>
+//             {i < order.items.length - 1 && ","}
+//           </p>
+//         ))}
+//       </div>
+
+//       {/* Address */}
+//       <div className="font-semibold">
+//         <p>
+//           {order.address.firstName} {order.address.lastName}
+//         </p>
+//         <p>{order.address.street}</p>
+//         <p>
+//           {order.address.city}, {order.address.state}, {order.address.country} -{" "}
+//           {order.address.zipcode}
+//         </p>
+//       </div>
+
+//       {/* Phone */}
+//       <div>
+//         <p className="font-bold">{order.address.phone}</p>
+//       </div>
+
+//       {/* Payment */}
+//       <div className="font-bold">
+//         <p>Items: {order.items.length}</p>
+//         <p className="mt-1">Method: {order.paymentMethod}</p>
+//         <p>Payment: {order.payment ? "Done" : "Pending"}</p>
+//         <p>Date: {new Date(order.date).toDateString()}</p>
+//       </div>
+
+//       {/* Amount + Status Dropdown */}
+//       <div className="flex flex-col gap-2 w-full max-w-[180px] font-bold">
+//         <p className=" whitespace-nowrap">
+//           {currency}
+//           {order.amount}
+//         </p>
+//         <select
+//           onChange={onStatusChange}
+//           value={order.status}
+//           className="border border-gray-300 px-3 py-1.5 rounded text-sm bg-white shadow-sm w-full"
+//         >
+//           <option value="Order Placed">Order Placed</option>
+//           <option value="Packing">Packing</option>
+//           <option value="Shipped">Shipped</option>
+//           <option value="Out for delivery">Out for delivery</option>
+//           <option value="Delivery">Delivery</option>
+//         </select>
+//       </div>
+//     </div>
+//   );
+// };
+
+// export default Orders;

@@ -1,0 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Oswald:wght@200..700&family=Outfit:wght@100..900&family=Prata&display=swap');
+@import "tailwindcss";
+*{
+    font-family:Outfit ;
+}
+.active{
+    background-color:#ffebf5 ;
+    border-color: #c586;
+}
+
+select, input, textarea{
+    border: 1px solid #ffebf5;
+    outline-color:#c586;
+    border-radius: 4px;
+}
