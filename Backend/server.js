@@ -19,7 +19,7 @@ connectCloudinary();
 // Allowed frontend origins (add your frontend domain here)
 const allowedOrigins = [
   "http://localhost:5176",
-  "http://localhost:5177",
+  "https://mern-ecommerce-sfrm.onrender.com",
   "http://localhost:3000",
   "https://mern-ecommerce-3bc1.vercel.app/" // 🔁 Replace with actual frontend URL
 ];
