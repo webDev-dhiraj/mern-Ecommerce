@@ -11,6 +11,7 @@ const profileRouter = require("./routes/profileRoute");
 
 dotenv.config();
 const app = express();
+const port = process.env.PORT || 5000; // ✅ Define the port here
 
 // Connect to MongoDB & Cloudinary
 connectDB();
@@ -54,12 +55,10 @@ app.get("/", (req, res) => {
   res.send("API Working ✅");
 });
 
-
 // Start Server
 app.listen(port, () => {
-  console.log(" Server started on PORT:", port);
+  console.log("🚀 Server started on PORT:", port);
 });
 
-
-// ✨ Export app (don't use app.listen)
+// ✨ Export app (optional for testing or other purposes)
 module.exports = app;
