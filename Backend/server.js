@@ -54,5 +54,12 @@ app.get("/", (req, res) => {
   res.send("API Working ✅");
 });
 
+
+// Start Server
+app.listen(port, () => {
+  console.log(" Server started on PORT:", port);
+});
+
+
 // ✨ Export app (don't use app.listen)
 module.exports = app;
